@@ -21,8 +21,8 @@ preamble {=
 main reactor {
   // timer t(0, 250 ms)
   // state led_on: bool = false
-  timer t_on(0, 250 ms)
-  timer t_off(0, 250 ms)
+  timer t_on(0, 500 ms)
+  timer t_off(250 ms, 500 ms)
 
   reaction(startup) {=
     gpio_init(PICO_DEFAULT_LED_PIN);
@@ -38,7 +38,7 @@ main reactor {
   reaction(t_on) {=
     printf("LED State: ON\n");
     gpio_put(PICO_DEFAULT_LED_PIN, true);
-  g=}
+  =}
 
   reaction(t_off) {=
     printf("LED State: OFF\n");
