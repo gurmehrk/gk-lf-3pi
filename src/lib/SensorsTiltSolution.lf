@@ -1,0 +1,65 @@
+/**
+ * Display three dimensions of accelerometer measurements on the LCD display of the
+ * <a href="https://www.pololu.com/docs/0J86">Pololu 3pi+ 2040 robot</a>. To run this program, first
+ * put the robot in BOOTSEL mode (hold button B while resetting). Then the sequence of commands is
+ * something like this:
+ * ```
+ *     $ cd ~/lf-pico
+ *     $ lfc src/lib/SensorsTiltSolution.lf
+ *     ...
+ *     $ picotool load -x bin/SensorsTiltSolution.elf
+ * ```
+ *
+ * This compiles the program, loads it into flash memory on the robot, and begins executing it.
+ *
+ * @author Edward A. Lee
+ */
+ target C {
+    platform: "RP2040",
+    threading: false
+  }
+  
+  import Accelerometer from "IMU.lf"
+  import Display from "Display.lf"
+
+  reactor Tilt {
+    a = new Accelerometer()
+    output roll: float;
+    output pitch: float;
+    
+    input trigger:bool;
+
+    reaction(trigger) -> a.trigger {=
+        lf_set(a.trigger, true);
+    =}
+
+    reaction (a.x, a.y, a.z) -> roll, pitch {=
+        lf_set(roll, -a.y->value * 90.0f);
+        lf_set(pitch, a.x->value * 90.0f);
+    =}
+
+  }
+  
+  main reactor {
+    g = new Tilt();
+    d = new Display()
+    timer t(0, 250 msec)
+  
+    reaction(t) -> g.trigger {=
+      lf_set(g.trigger, true);
+    =}
+  
+    reaction(g.roll, g.pitch) -> d.line1, d.line2 {=
+      /// TODO: define max string size for line
+      /// based on font you can have 4 or 8 lines
+      static char buf1[17];
+      static char buf2[17];
+  
+      snprintf(buf1, 17, "Roll:%2.4f%c", g.roll->value, 248);
+      snprintf(buf2, 17, "Pitch:%2.4f%c", g.pitch->value, 248);
+
+      lf_set(d.line1, buf1);
+      lf_set(d.line2, buf2);
+    =}
+  }
+  
