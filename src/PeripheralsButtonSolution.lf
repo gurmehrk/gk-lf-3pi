@@ -13,6 +13,8 @@ target C {
   threading: false
 }
 
+import Display from "lib/Display.lf"
+
 preamble {=
   #include <stdio.h>
   #include <pico/stdlib.h>
@@ -20,29 +22,29 @@ preamble {=
 =}
 
 main reactor {
+  d = new Display()
   timer t(0, 250 ms)
   state led_on: bool = false
 
-
   reaction(startup) {=
     gpio_init(PICO_DEFAULT_LED_PIN);
-    gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_BFGOUT);
+    gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
   =}
 
-  reaction(t) {=
-    self->led_on = !self->led_on;
-    printf("LED State: %b\n", self->led_on);
+  reaction(t) -> d.line1, d.line2 {=
+    uint gpio = 25;
+    // bool gpio_val = gpio_get(25);
+    bool gpio_val = (bool) !!((1ul << gpio) & sio_hw->gpio_in);
 
-    uint32_t mask = 1ul << 25;
-    uint32_t *gpio_set = (uint32_t *)(0xd0000000 + 0x14);
-    uint32_t *gpio_clear = (uint32_t *)(0xd0000000 + 0x14);
-    
-    if (self->led_on) {
-      *gpio_set = mask;
+    static char buf1[17];
+    static char buf2[17];
+
+    if (gpio_val) {
+      snprintf(buf1, 17, "Button Pressed");
     } else {
-      *gpio_clr = mask;
+      snprintf(buf1, 17, "Button Released");
     }
 
-    // gpio_put(PICO_DEFAULT_LED_PIN, !self->led_on);
+    lf_set(d.line1, buf1);
   =}
 }
