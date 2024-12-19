@@ -1,0 +1,236 @@
+/**
+ * Display the outputs from the line sensors on the
+ * <a href="https://www.pololu.com/docs/0J86">Pololu 3pi+ 2040 robot</a>. This program spends the
+ * first 10 seconds in calibration mode, during which you should move the robot over the light and
+ * dark areas that you would like it to detect. It then switches into measurement mode and displays
+ * the measured reflectance of the five IR sensors.
+ *
+ * @author Abhi Gundrala
+ * @author Edward A. Lee
+ */
+ target C {
+    platform: {
+      name: "rp2040",
+      board: "pololu_3pi_2040_robot"
+    },
+    single-threaded: true
+  }
+  
+  import Line from "lib/Line.lf"
+  import Display from "lib/Display.lf"
+  import Motors from "lib/Motors.lf"
+  import GyroAngle from "lib/IMU.lf"
+  import Accelerometer from "lib/IMU.lf"
+  import MotorsWithFeedback from "lib/MotorsWithFeedback.lf"
+  import Encoders from "lib/Encoders.lf"
+  
+  preamble {=
+    #include <stdio.h>
+    #include <math.h>
+    #define max(x, y) ((x) > (y) ? (x) : (y))
+    #define min(x, y) ((x) > (y) ? (x) : (y))
+  =}
+
+  reactor Robot {
+    input pitch: float
+    input roll: float
+    input yaw: float
+    input encoder_left: int32_t
+    input encoder_right: int32_t
+
+    input gyro_x: float
+    input gyro_y: float
+    input gyro_z: float
+
+    output notify: string
+
+    motors = new MotorsWithFeedback()
+    motors_bare = new Motors()
+
+    state max_pitch: float = 0
+    state initial_roll: float = 0
+    state turn_start_left_encoder: float = 0
+    state turn_start_right_encoder: float = 0
+    state turn_start_gyro_z: float = 0
+    state turn_start_yaw: float = 0
+
+    // PID parameters
+    state kp_roll: float = 0.01
+    state ki: float = 0.1
+    // initial mode ORIENT {
+    //   reaction(pitch, roll) -> reset(CLIMB), notify, motors_bare.left_power, motors_bare.right_power, motors.right_speed, motors.left_speed{=
+    //     lf_set(notify, "ORIENTING");
+    //     lf_set(motors_bare.left_power, 0.18);
+    //     lf_set(motors_bare.right_power, -0.18);
+    //     if (pitch->value > 8.0f) {
+    //       lf_set_mode(CLIMB);
+    //     }
+    //   =}
+    // }
+
+    initial mode CLIMB {
+      reaction(pitch, roll, encoder_right, encoder_left, gyro_z) -> reset(TURN), notify, motors.right_speed, motors.left_speed, motors.right, motors.left {=
+        lf_set(notify, "CLIMB");
+        
+        float flat_threshold = 2.0f;
+        float flat_roll_threshold = 13.0f;
+        float roll_correction = self->kp_roll*roll->value; // Desired roll = 0
+
+        float target_speed_left = 0.08 + roll_correction;
+        float target_speed_right = 0.08 - roll_correction;
+
+        lf_set(motors.left_speed, target_speed_left);
+        lf_set(motors.right_speed, target_speed_right);
+        lf_set(motors.left, encoder_left->value);
+        lf_set(motors.right, encoder_right->value);
+
+        // Checking if plateau reached
+        if (pitch->value > 0 && pitch->value < flat_threshold && roll->value < flat_roll_threshold && roll->value > -flat_roll_threshold) { //float threshold = 1.0f
+          lf_set(notify, "TURNING");
+          lf_set_mode(TURN);
+          self->turn_start_right_encoder = encoder_right->value;
+          self->turn_start_left_encoder = encoder_left->value;
+          self->turn_start_gyro_z = gyro_z->value;
+        }
+      =}
+
+    }
+    
+    mode TURN {
+      reaction(pitch, roll, encoder_right, encoder_left, gyro_z) -> reset(DESCEND), notify, motors.right_speed, motors.left_speed, motors.right, motors.left {=
+        // lf_set(notify, "TURN");
+        lf_set(motors.left_speed, 0.08);
+        lf_set(motors.right_speed, -0.08);
+        lf_set(motors.left, encoder_left->value);
+        lf_set(motors.right, encoder_right->value);
+
+        int32_t target_turn_ticks = ((0.31419 / 2) / 0.000279) - 45;
+        int32_t current_left_ticks = encoder_left->value - self->turn_start_left_encoder;
+        int32_t current_right_ticks = encoder_right->value - self->turn_start_right_encoder;
+        static char buf11[17];
+        snprintf(buf11, 17, "lticks:%d", current_left_ticks);
+        lf_set(notify, buf11);
+        lf_set(motors.left_speed, -0.08);
+        lf_set(motors.right_speed, 0.08);
+        lf_set(motors.left, encoder_left->value);
+        lf_set(motors.right, encoder_right->value);
+
+        // Checking if need to descend 
+        if (abs(current_left_ticks) >= target_turn_ticks || abs(current_right_ticks) >= target_turn_ticks) {
+          lf_set_mode(DESCEND);
+          lf_set(motors.left_speed, 0);
+          lf_set(motors.right_speed, 0);
+          lf_set(motors.left, encoder_left->value);
+          lf_set(motors.right, encoder_right->value);
+        }
+      =}
+    }
+
+    mode DESCEND {
+      reaction(pitch, roll, encoder_right, encoder_left, gyro_z) -> reset(STOP), notify, motors.right_speed, motors.left_speed, motors.right, motors.left {=
+        lf_set(notify, "DESCEND");
+        
+        float flat_threshold = -2.0f;
+        float flat_roll_threshold = 13.0f;
+        float roll_correction = self->kp_roll*roll->value; // Desired roll = 0
+
+        float target_speed_left = 0.08 - roll_correction;
+        float target_speed_right = 0.08 + roll_correction;
+
+        lf_set(motors.left_speed, target_speed_left);
+        lf_set(motors.right_speed, target_speed_right);
+        lf_set(motors.left, encoder_left->value);
+        lf_set(motors.right, encoder_right->value);
+
+        // Checking if plateau reached
+        // if ((float) pitch->value > flat_threshold && roll->value < flat_roll_threshold) { //float threshold = 1.0f
+        //   lf_set_mode(STOP);
+        // }
+      =}
+    }
+
+    mode STOP {
+      reaction (pitch, roll, encoder_right, encoder_left, gyro_z) -> notify, motors.right_speed, motors.left_speed, motors.right, motors.left {=
+        lf_set(notify, "STOP");
+        lf_set(motors.left_speed, 0);
+        lf_set(motors.right_speed, 0);
+        lf_set(motors.left, encoder_left->value);
+        lf_set(motors.right, encoder_right->value);
+      =}
+    }
+  }
+
+  main reactor(calibration_time: time = 10 s, sample_period: time = 50 ms) {
+    // line = new Line()
+    disp = new Display()
+    gyro = new GyroAngle()
+    accel = new Accelerometer()
+    robot = new Robot()
+    encoder = new Encoders()
+
+    timer t(0, sample_period)
+    timer t_gyro(0, 100 ms)
+    timer end_calibration(calibration_time)
+    state count: int = 0
+
+    // reaction(end_calibration) -> line.calibrate {=
+    //   lf_set(line.calibrate, false);
+    // =}
+  
+    reaction(t) -> accel.trigger, encoder.trigger {=
+      // lf_set(line.trigger, true);
+      lf_set(accel.trigger, true);
+      lf_set(encoder.trigger, true);
+    =}
+
+    // reaction(t_gyro) -> gyro.trigger {=
+    //   lf_set(gyro.trigger, true);
+    // =}
+  
+    reaction(encoder.right) -> robot.encoder_right {=
+      lf_set(robot.encoder_right, encoder.right->value);
+    =}
+    
+    reaction(encoder.left) -> robot.encoder_left {=
+      lf_set(robot.encoder_left, encoder.left->value);
+    =}
+
+    reaction(gyro.z) -> robot.gyro_z {=
+      lf_set(robot.gyro_z, gyro.z->value);
+    =}
+    
+    reaction(gyro.x) -> robot.gyro_x {=
+      lf_set(robot.gyro_x, gyro.x->value);
+    =}
+    
+    reaction(gyro.y) -> robot.gyro_y {=
+      lf_set(robot.gyro_y, gyro.y->value);
+    =}
+
+    reaction(accel.y, accel.x, accel.z, gyro.z) -> disp.line1, disp.line2, disp.line3 {=
+      /// TODO: define max string size for line
+      /// based on font you can have 4 or 8 lines
+      static char buf10[17];
+      static char buf8[17];
+      static char buf9[17];
+      float roll = -atan2(accel.y->value, sqrt(accel.z->value * accel.z->value + accel.x->value * accel.x->value)) * 57.3;
+      float pitch = atan2(accel.x->value, sqrt(accel.y->value * accel.y->value + accel.z->value * accel.z->value)) * 57.3;
+      snprintf(buf8, 17, "pitch:%2.4f", pitch);
+      snprintf(buf9, 17, "roll:%2.4f", roll);
+      snprintf(buf10, 17, "gyro_z:%2.4f", gyro.z);
+      lf_set(disp.line1, buf8);
+      lf_set(disp.line2, buf9);
+      lf_set(disp.line3, buf10);
+    =}
+
+    reaction(accel.y, accel.x, accel.z) -> disp.line1, disp.line2, robot.pitch, robot.roll {=
+      float roll = -atan2(accel.y->value, sqrt(accel.z->value * accel.z->value + accel.x->value * accel.x->value)) * 57.3;
+      float pitch = atan2(accel.x->value, sqrt(accel.y->value * accel.y->value + accel.z->value * accel.z->value)) * 57.3;
+      lf_set(robot.pitch, pitch);
+      lf_set(robot.roll, roll);
+    =}
+
+    robot.notify -> disp.line0
+
+  }
+  

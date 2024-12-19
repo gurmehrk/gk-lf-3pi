@@ -1,0 +1,172 @@
+/**
+ * Display the outputs from the line sensors on the
+ * <a href="https://www.pololu.com/docs/0J86">Pololu 3pi+ 2040 robot</a>. This program spends the
+ * first 10 seconds in calibration mode, during which you should move the robot over the light and
+ * dark areas that you would like it to detect. It then switches into measurement mode and displays
+ * the measured reflectance of the five IR sensors.
+ *
+ * @author Abhi Gundrala
+ * @author Edward A. Lee
+ */
+ target C {
+    platform: {
+      name: "rp2040",
+      board: "pololu_3pi_2040_robot"
+    },
+    single-threaded: true
+  }
+  
+  import Line from "lib/Line.lf"
+  import Display from "lib/Display.lf"
+  import Motors from "lib/Motors.lf"
+  import GyroAngle from "lib/IMU.lf"
+  
+  reactor Robot {
+    input line_reflect: uint16_t[5]
+    output notify: string
+    output time1: string
+    timer seconds(0, 1 s)  // Timer used to display seconds.
+    state right_turn: bool = false
+    state left_turn: bool = false 
+
+    motors = new Motors()
+
+    initial mode DRIVE {
+      reaction(line_reflect) -> reset(BACK), reset(LEFT_TURN), reset(RIGHT_TURN), notify, motors.left_power, motors.right_power {=
+        uint16_t left_sensor1 = line_reflect->value[0];
+        uint16_t left_sensor2 = line_reflect->value[1];
+        uint16_t center_sensor = line_reflect->value[2];
+        uint16_t right_sensor1 = line_reflect->value[3];
+        uint16_t right_sensor2 = line_reflect->value[4];
+        uint16_t threshold = 800;
+
+        lf_set(motors.left_power, 0.16f);
+        lf_set(motors.right_power, 0.16f);
+        lf_set(notify, "DRIVE");
+
+        // Right sensor ONLY
+        if (right_sensor2 >= threshold && left_sensor1 <= 200) {
+          // lf_set(notify, "BACK");
+          // lf_set_mode(BACK);
+          lf_set(motors.left_power, -0.12f);
+          // lf_set(motors.right_power, 0.12f);
+          lf_set(notify, "LEFT_TURN");
+          lf_set_mode(LEFT_TURN);
+        }
+        // center and right 
+        else if (center_sensor >= threshold && right_sensor1 >= threshold) {
+          // lf_set(notify, "BACK");
+          // lf_set_mode(BACK);
+          lf_set(motors.left_power, -0.12f);
+          // lf_set(motors.right_power, 0.12f);
+          lf_set(notify, "LEFT_TURN");
+          lf_set_mode(LEFT_TURN);
+        }
+        // Left sensor ONLY
+        else if (left_sensor1 >= threshold && right_sensor2 <= 200) {
+          // lf_set(notify, "BACK");
+          // lf_set_mode(BACK);
+          // lf_set(motors.left_power, 0.12f);
+          lf_set(motors.right_power, -0.12f);
+          lf_set(notify, "RIGHT_TURN");
+          lf_set_mode(RIGHT_TURN);
+        }
+        // center and left
+        else if (center_sensor >= threshold && left_sensor2 >= threshold) {
+          // lf_set(notify, "BACK");
+          // lf_set_mode(BACK);
+          // lf_set(motors.left_power, 0.12f);
+          lf_set(motors.right_power, -0.12f);
+          lf_set(notify, "RIGHT_TURN");
+          lf_set_mode(RIGHT_TURN);
+        }
+        // center only case
+        else if (center_sensor >= threshold) {   
+          // lf_set(motors.left_power, 0.12f);
+          lf_set(motors.right_power, -0.12f);
+          lf_set(notify, "RIGHT_TURN");
+          lf_set_mode(RIGHT_TURN);
+        }
+
+      
+      =}
+    }
+    
+    mode RIGHT_TURN {
+      reaction(line_reflect) -> reset(DRIVE) {=
+        uint16_t left_sensor1 = line_reflect->value[0];
+        uint16_t left_sensor2 = line_reflect->value[1];
+        uint16_t center_sensor = line_reflect->value[2];
+        uint16_t right_sensor1 = line_reflect->value[3];
+        uint16_t right_sensor2 = line_reflect->value[4];
+        uint16_t threshold = 800;
+        if(left_sensor1 <= 200 && left_sensor2 <= 200 
+        && right_sensor1 <= 200 && right_sensor2 <= 200 && center_sensor <= 200) {
+          lf_set_mode(DRIVE);
+        }
+      =}
+    }
+
+    mode LEFT_TURN {
+      reaction(line_reflect) -> reset(DRIVE) {=
+        uint16_t left_sensor1 = line_reflect->value[0];
+        uint16_t left_sensor2 = line_reflect->value[1];
+        uint16_t center_sensor = line_reflect->value[2];
+        uint16_t right_sensor1 = line_reflect->value[3];
+        uint16_t right_sensor2 = line_reflect->value[4];
+        uint16_t threshold = 800;
+
+        if(left_sensor1 <= 200 && left_sensor2 <= 200 
+        && right_sensor1 <= 200 && right_sensor2 <= 200 && center_sensor <= 200) {
+          lf_set_mode(DRIVE);
+        }
+      =}
+    }
+
+    mode BACK {
+      reaction(line_reflect) -> history(DRIVE), motors.left_power, motors.right_power {=
+        lf_set(motors.left_power, -0.12f);
+        lf_set(motors.right_power, -0.12f);
+        uint16_t left_sensor1 = line_reflect->value[0];
+        uint16_t left_sensor2 = line_reflect->value[1];
+        uint16_t center_sensor = line_reflect->value[2];
+        uint16_t right_sensor1 = line_reflect->value[3];
+        uint16_t right_sensor2 = line_reflect->value[4];
+        uint16_t threshold = 800;
+        if(left_sensor1 <= 200 && left_sensor2 <= 200 
+        && right_sensor1 <= 200 && right_sensor2 <= 200 && center_sensor <= 200) {
+          lf_set_mode(DRIVE);
+        }
+      =}
+    }
+  }
+
+  main reactor(calibration_time: time = 10 s, sample_period: time = 100 ms) {
+    line = new Line()
+    disp = new Display()
+    gyro = new GyroAngle()
+    robot = new Robot()
+
+    timer t(0, sample_period)
+    timer end_calibration(calibration_time)
+    state count: int = 0
+
+    reaction(end_calibration) -> line.calibrate {=
+      lf_set(line.calibrate, false);
+    =}
+  
+    reaction(t) -> line.trigger, gyro.trigger {=
+      lf_set(line.trigger, true);
+      lf_set(gyro.trigger, true);
+    =}
+  
+    reaction(startup) -> disp.line1, disp.line2 {=
+      lf_set(disp.line1, "CAL: Roll");
+      lf_set(disp.line2, "light and dark.");
+    =}
+    
+    line.reflect -> robot.line_reflect;
+    robot.notify -> disp.line0
+
+  }
+  
