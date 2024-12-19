@@ -1,0 +1,75 @@
+target C {
+    platform: {
+      name: "rp2040",
+      board: "pololu_3pi_2040_robot"
+    },
+    threading: false,
+    keepalive: true
+  }
+  
+import Display from "lib/Display.lf"
+
+preamble {=
+  #include <stdio.h>
+  #include <pico/stdlib.h>
+  #include <hardware/gpio.h>
+  static void* action;
+
+  static void  gpiocallback(uint gpio, uint32_t event_mask)
+  {
+      lf_schedule(action, 0);
+  }
+
+  static int buttonPressNum = 0;
+
+  
+=}
+
+main reactor {
+    timer t(0, 2000 ms)
+    state led_on: bool = false
+    d = new Display()
+
+    state last_btn_press_time :instant_t = 0;
+    
+    physical action a;
+    reaction(startup) -> a {=
+      // Initialize this GPIO
+      gpio_init(PICO_DEFAULT_LED_PIN);
+      // Set direction to output
+      gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_IN);
+
+    
+      stdio_init_all();
+      gpio_set_irq_enabled_with_callback(PICO_DEFAULT_LED_PIN, GPIO_IRQ_EDGE_FALL, true, &gpiocallback);
+      
+      action = a;
+
+    =}
+  
+    reaction(a) -> d.line1, d.line2 {=
+        lf_set(d.line2, "HELLO");
+        static char buff[17];
+
+        instant_t delta_time = 0;
+        instant_t curr_time = lf_time_logical_elapsed();
+
+        if (self->last_btn_press_time == 0)
+        {
+          self->last_btn_press_time = curr_time;
+        }
+        else {
+            delta_time = curr_time - self->last_btn_press_time;
+            self->last_btn_press_time = curr_time;
+        }
+        
+        float delta_time_ms = delta_time / 1000000.0f;
+
+
+        snprintf(buff, 17, "T: %f", delta_time_ms);
+        lf_set(d.line1, buff);
+
+    =}
+  
+  }
+  

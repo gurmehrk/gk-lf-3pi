@@ -14,11 +14,31 @@ preamble {=
 #include <pico/stdlib.h>
 #include <hardware/gpio.h>
 static void* action;
+static instant_t last_btn_press_time = 0;
+
 
 static void  gpiocallback(uint gpio, uint32_t event_mask)
-{
-    lf_schedule(action, 0);
-}
+  {
+    // lf_schedule(button_press_action, 0);
+      
+    instant_t curr_time = lf_time_physical();
+    instant_t delta_time = 0;
+
+    if (last_btn_press_time == 0) {
+      lf_schedule(action, 0);
+      last_btn_press_time = curr_time;
+    } else {
+      delta_time = curr_time - last_btn_press_time;
+      last_btn_press_time = curr_time;
+    }
+
+
+    if (delta_time > 200000000) {
+      lf_schedule(action, 0);
+      last_btn_press_time = curr_time;
+    } 
+
+  }
 
 static int buttonPressNum = 0;
 

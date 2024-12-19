@@ -1,0 +1,129 @@
+target C {
+    platform: {
+      name: "rp2040",
+      board: "pololu_3pi_2040_robot"
+    },
+    threading: false,
+    keepalive: true
+  }
+  
+import Display from "lib/Display.lf"
+
+
+preamble {=
+  #include <stdio.h>
+  #include <core/reactor.h>
+  #include <pico/stdlib.h>
+  #include <hardware/gpio.h>
+  
+  static void* button_press_action;
+  static instant_t last_btn_press_time = 0;
+  
+
+  static void  gpiocallback(uint gpio, uint32_t event_mask)
+  {
+    // lf_schedule(button_press_action, 0);
+      
+    instant_t curr_time = lf_time_physical();
+    if (curr_time - last_btn_press_time > 200000000) {
+      lf_schedule(button_press_action, 0);
+      last_btn_press_time = curr_time;
+    } else {
+      printf("debounce detected!");
+    }
+    printf("callback: Pin %d, Events %d\n", gpio, event_mask);
+
+
+  }
+
+  static int buttonPressNum = 0;
+
+=}
+
+
+
+main reactor {
+    state led_on: bool = false
+    d = new Display()
+    state count: int = 0;
+  
+
+    state modeType: int = 0
+    state prev_time : instant_t = 0
+    
+    physical action button_press_internal;
+    reaction(startup) -> button_press_internal {=
+      // Initialize this GPIO
+      gpio_init(PICO_DEFAULT_LED_PIN);
+      // Set direction to output
+      gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_IN);
+
+      // static int counter = 0;
+      gpio_set_irq_enabled_with_callback(PICO_DEFAULT_LED_PIN, GPIO_IRQ_EDGE_FALL, true, &gpiocallback);
+      // static instant_t prev_time = 0;
+      
+      // button_press_internal = button_press_action;
+      // button_press_action = button_press_internal;
+      button_press_action = button_press_internal;
+    =}
+
+
+    initial mode countUp {
+      timer t0(0, 750 ms)
+
+      reaction(t0) -> d.line1 {=
+        static char buff_upl1 [17];
+        self->count++;
+        snprintf(buff_upl1, 17, "Count: %d", self->count);
+        lf_set(d.line1, buff_upl1);
+      =}
+      
+      reaction(button_press_internal) -> countDown, d.line1 {=
+        lf_set_mode(countDown);
+      =}
+
+    }
+
+    mode countDown {
+      timer t1(0, 325 ms)
+
+      
+      reaction(t1) -> d.line1 {=
+        static char buff_downl1 [17];
+        self->count--;
+        snprintf(buff_downl1, 17, "Count: %d", self->count);
+        lf_set(d.line1, buff_downl1);
+      =}
+            
+      reaction(button_press_internal) -> countUp, d.line1 {=
+        lf_set_mode(countUp);
+      =}
+    }
+      
+
+    // reaction(a) {=
+    //   instant_t curr_time = lf_time_logical_elapsed();
+
+    //   if (self->prev_time) {
+    //     int elapsed_time_ms = (uint32_t) ((curr_time - self->prev_time) / 1000000);
+    //     printf("Time since last button press: %d ms\n", elapsed_time_ms);
+    //   }
+    //   else {
+    //     printf("First button press.\n");
+    //   }
+    //   self->prev_time = curr_time;
+
+    //   // lf_set(self->prev_time, curr_time);
+    //   // if (self->modeType == 0) //Is in CountUp mode
+    //   // {
+    //   //   lf_set_mode(countDown);
+    //   // }
+    //   // else if (self->modeType == 1) //Is in CountDown mode
+    //   // {
+    //   //   lf_mode_set(countUp);
+    //   // }
+
+    // =}
+  
+  }
+  
