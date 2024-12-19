@@ -1,0 +1,64 @@
+/**
+ * Display encoder measurements from the wheels of the
+ * <a href="https://www.pololu.com/docs/0J86">Pololu 3pi+ 2040 robot</a>.
+ * @author Abhi Gundrala
+ * @author Edward A. Lee
+ */
+target C {
+  platform: {
+    name: "rp2040",
+    board: "pololu_3pi_2040_robot"
+  },
+  single-threaded: true
+}
+
+import Display from "lib/Display.lf"
+import Encoders from "lib/Encoders.lf"
+
+reactor AngleToDistance {
+  display = new Display()
+  input left_angle: float
+  input right_angle: float
+  output left_distance: float
+  output right_distance: float
+
+  reaction(startup) -> display.line0 {=
+    lf_set(display.line0, "ENCODERS:");
+  =}
+  
+  reaction(left_angle) -> display.line1, left_distance{=
+    // self.left_distance = 9.9695 * (left_angle->value/360);
+    lf_set(left_distance, 9.9695f * (left_angle->value/360.0f));
+    static char buf[17];
+    snprintf(buf, 17, "L: %f", left_distance->value);
+    lf_set(display.line1, buf);
+  =}
+
+  reaction(right_angle) -> display.line2, right_distance {=
+    // self.right_distance = 9.9695 * (right_angle->value/360);
+    lf_set(right_distance, 9.9695f * (right_angle->value/360.0f));
+    static char buf[17];
+    snprintf(buf, 17, "R: %f", right_distance->value);
+    lf_set(display.line2, buf);
+
+  =}
+}
+
+main reactor {
+  encoder = new Encoders()
+  angleToDistance = new AngleToDistance()
+
+  timer t(0, 50 ms)
+
+  reaction(t) -> encoder.trigger {=
+    lf_set(encoder.trigger, true);
+  =}
+
+  reaction(encoder.left) -> angleToDistance.left_angle {=
+    lf_set(angleToDistance.left_angle, encoder.left->value);
+  =}
+
+  reaction(encoder.right) -> angleToDistance.right_angle{=
+    lf_set(angleToDistance.right_angle, encoder.right->value);
+  =}
+}

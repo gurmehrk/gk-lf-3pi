@@ -1,0 +1,254 @@
+/**
+ * Display messages when the bump sensors on the
+ * <a href="https://www.pololu.com/docs/0J86">Pololu 3pi+ 2040 robot</a> are triggered.
+ * @author Abhi Gundrala
+ * @author Edward A. Lee
+ */
+target C {
+  platform: {
+    name: "rp2040",
+    board: "pololu_3pi_2040_robot"
+  },
+  threading: false
+}
+
+import Bump from "lib/Bump.lf"
+import Display from "lib/Display.lf"
+import Motors from "lib/Motors.lf"
+import GyroAngle from "lib/IMU.lf"
+import Encoders from "lib/Encoders.lf"
+
+reactor Robot {
+  output notify: string
+  output display_line2: string
+  output display_line1: string
+  motors = new Motors()
+
+   // Notify of mode change.]
+  input right_distance: float
+  input left_distance: float
+  input angle_z: float
+  state initial_gyroz: float = 0.0
+  state init_left_distance: float = 0.0
+  state init_right_distance: float = 0.0
+
+  // if bump hit, previous distance traveled
+  state init_bump_left_distance: float = 0.0
+  state init_bump_right_distance: float = 0.0
+  state init_bump_angle: float = 0.0
+
+  // if bump 
+  state right_bump_distance: float = 0.0
+  state left_bump_distance: float = 0.0
+
+  input right_bump: bool
+  input left_bump: bool
+
+  reaction(startup) -> notify {=
+    lf_set(notify, "INIT");
+  =}
+
+  initial mode DRIVE {
+    // reaction(startup) -> reset(TURN), notify, motors.left_power, motors.right_power {=
+    //   lf_set(notify, "DRIVING");
+    //   lf_set(motors.left_power, 0.1);
+    //   lf_set(motors.right_power, 0.1);
+    // =}
+
+    reaction(left_distance, right_distance, angle_z) -> display_line1, display_line2, reset(TURN), notify, motors.left_power, motors.right_power {=
+      // static char buf[17];
+      // snprintf(buf, 17, "%d", right_bump->is_present);
+      // lf_set(display_line1, buf);
+
+      // static char buff[17];
+      // snprintf(buff, 17, "%d", left_bump->is_present);
+      // lf_set(display_line2, buff);
+      
+      // if ((right_bump->is_present) || (left_bump->is_present)) {
+      //   // lf_set(display_line2, "BUMP");
+      //   self->init_bump_left_distance = left_distance->value;
+      //   self->init_bump_right_distance = right_distance->value;
+        
+      //   // lf_set(display_line1, "BACK");
+      //   lf_set(motors.left_power, 0);
+      //   lf_set(motors.right_power, 0);
+      //   lf_sleep(MSEC(1000));
+      //   // while (!((left_distance->value <= self->init_bump_left_distance - 10.0f) | (right_distance->value <= self->init_bump_right_distance - 10.0f))) {
+      //   //   lf_set(motors.left_power, -0.1);
+      //   //   lf_set(motors.right_power, -0.1);
+      //   // }
+      
+      //   // // Turning a little 
+      //   // while (!((angle_z->value) >= self->initial_gyroz + 30.0f)) {
+      //   //   lf_set(motors.left_power, -0.1);
+      //   //   lf_set(motors.right_power, 0.1);
+      //   // }
+      //   // lf_set(motors.left_power, 0);
+      //   // lf_set(motors.right_power, 0);
+      //   // self->init_left_distance = left_distance->value;
+      //   // self->init_right_distance = right_distance->value;
+
+      //   // lf_set(notify, "BUMP");
+      //   // lf_set(motors.left_power, 0);
+      //   // lf_set(motors.right_power, lf_set(motors.left_power, -0.1);
+      // lf_set(motors.right_power, -0.1);
+      
+      // } else {
+      //   // lf_set(motors.left_power, 0.1);
+      //   // lf_set(motors.right_power, 0.1);
+      // }
+      lf_set(motors.left_power, 0.1);
+      lf_set(motors.right_power, 0.1);
+      lf_set(notify, "DRIVE");
+      if ((left_distance->value >= 50.0f + self->init_left_distance) | (right_distance->value >= 50.0f + self->init_right_distance)) {
+        lf_set_mode(TURN);
+        self->initial_gyroz = angle_z->value;
+      }
+    =}
+
+    reaction(right_bump, left_bump) left_distance, right_distance, angle_z -> reset(BUMPED), display_line1, display_line2, notify, reset(DRIVE), motors.left_power, motors.right_power {=
+      lf_set_mode(BUMPED);
+      // static char buf[17];
+      // snprintf(buf, 17, "%d", right_bump->value);
+      // lf_set(display_line1, buf);
+
+      // static char buff[17];
+      // snprintf(buff, 17, "%d", left_bump->value);
+
+      // lf_set(display_line2, buff);
+      // lf_set(notify, "BUMP");
+      self->init_bump_left_distance = left_distance->value;
+      self->init_bump_right_distance = right_distance->value;
+      // lf_set(motors.left_power, -0.1);
+      // lf_set(motors.right_power, -0.1);
+      
+      //   while (!((left_distance->value <= self->init_bump_left_distance - 10.0f) | (right_distance->value <= self->init_bump_right_distance - 10.0f))) {
+      //   lf_set(motors.left_power, -0.1);
+      //   lf_set(motors.right_power, -0.1);
+      // }
+      
+      //   // Turning a little 
+      //   while (!((angle_z->value) >= self->initial_gyroz + 30.0f)) {
+      //     lf_set(motors.left_power, -0.1);
+      //     lf_set(motors.right_power, 0.1);
+      //   }
+      //   lf_set(motors.left_power, 0);
+      //   lf_set(motors.right_power, 0);
+      //   self->init_left_distance = left_distance->value;
+      //   self->init_right_distance = right_distance->value;
+      
+      
+
+    =}
+  }
+
+  mode TURN {
+
+    // reaction(startup) -> notify, motors.left_power, motors.right_power {=
+    //   lf_set(notify, "TURNING");
+    //   lf_set(motors.left_power, -0.1);
+    //   lf_set(motors.right_power, 0.1);
+    // =}
+
+    reaction(angle_z, right_distance, left_distance) -> reset(DRIVE), notify, motors.left_power, motors.right_power {=
+      lf_set(notify, "TURN");
+      lf_set(motors.left_power, -0.1);
+      lf_set(motors.right_power, 0.1);
+      if ((angle_z->value) >= self->initial_gyroz + 90.0f) {
+        self->init_left_distance = left_distance->value;
+        self->init_right_distance = right_distance->value;
+        lf_set(motors.left_power, 0);
+        lf_set(motors.right_power, 0);
+        lf_set_mode(DRIVE);
+      }
+    =}    
+  }
+
+  mode BUMPED {
+    //timer t(0, 50ms)
+    reaction(right_bump, left_bump, left_distance, right_distance, angle_z) -> display_line2, display_line1, notify, reset(BUMPED_TURN), motors.left_power, motors.right_power{=
+      static char buf[17];
+      snprintf(buf, 17, "%f", left_distance->value);
+      lf_set(display_line1, buf);
+
+      static char buff[17];
+      snprintf(buff, 17, "%f", self->init_bump_left_distance - 10.0f);
+      lf_set(display_line2, buff);
+
+      lf_set(notify, "BUMP");
+
+      
+      lf_set(motors.left_power, -0.1);
+      lf_set(motors.right_power, -0.1);
+      if ((left_distance->value <= self->init_bump_left_distance - 10.0f) | (right_distance->value <= self->init_bump_right_distance - 10.0f)) {
+        lf_set(notify, "DONE");
+        lf_set_mode(BUMPED_TURN);
+        // lf_set(motors.left_power, -0.1);
+        // lf_set(motors.right_power, 0.1);
+        self->init_bump_angle = angle_z->value;
+        self->init_bump_angle = angle_z->value;
+      }
+    =}
+  }
+
+  mode BUMPED_TURN {
+
+
+    reaction(angle_z, right_distance, left_distance) -> reset(DRIVE), notify, motors.left_power, motors.right_power {=
+      lf_set(notify, "BUMPED_TURN");
+      lf_set(motors.left_power, -0.1);
+      lf_set(motors.right_power, 0.1);
+      if ((angle_z->value) >= self->init_bump_angle + 30.0f) {
+        // lf_set(notify, "DONE");
+        lf_set(motors.left_power, 0);
+        lf_set(motors.right_power, 0);
+        lf_set_mode(DRIVE);
+      }
+    =}  
+
+  }
+}
+
+main reactor {
+  robot = new Robot()
+  bump = new Bump()
+  disp = new Display()
+  gyro = new GyroAngle() 
+  encoder = new Encoders()
+  logical action clear
+
+  robot.notify -> disp.line0
+  robot.display_line1 -> disp.line1
+  robot.display_line2 -> disp.line2
+  timer t(0, 50 ms)
+
+  reaction(t) -> encoder.trigger, gyro.trigger {=
+    lf_set(encoder.trigger, true);
+    lf_set(gyro.trigger, true);
+  =}
+
+  reaction(encoder.left) -> robot.left_distance {=
+    lf_set(robot.left_distance, 9.9695f * (encoder.left->value/360.0f));
+  =}
+
+  reaction(encoder.right) -> robot.right_distance{=
+    lf_set(robot.right_distance, 9.9695f * (encoder.right->value/360.0f));
+  =}
+
+  reaction(gyro.z) -> robot.angle_z {=
+    lf_set(robot.angle_z, gyro.z->value);
+  =}
+
+  reaction(bump.left) -> robot.left_bump{=
+    // lf_set(disp.line1, "Left Bumped!");
+    lf_set(robot.left_bump, bump.left->value);
+  =}
+
+  reaction(bump.right) -> robot.right_bump {=
+    // lf_set(disp.line2, "Right Bumped!");
+    lf_set(robot.right_bump, bump.right->value);
+
+  =}
+
+
+}

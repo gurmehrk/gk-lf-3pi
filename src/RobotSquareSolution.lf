@@ -1,0 +1,105 @@
+/**
+ * Template for robot driving lab exercises. This template just periodically switches between a
+ * STOPPED and a DRIVING mode, updating the LCD display on each change of mode.
+ */
+ target C {
+  platform: {
+    name: "rp2040",
+    board: "pololu_3pi_2040_robot"
+  },
+  single-threaded: true
+}
+
+import Motors from "lib/Motors.lf"
+import Display from "lib/Display.lf"
+import GyroAngle from "lib/IMU.lf"
+import Encoders from "lib/Encoders.lf"
+
+
+reactor Robot {
+  output notify: string
+  motors = new Motors()
+   // Notify of mode change.]
+  input right_distance: float
+  input left_distance: float
+  input angle_z: float
+  state initial_gyroz: float = 0.0
+  state init_left_distance: float = 0.0
+  state init_right_distance: float = 0.0
+
+  reaction(startup) -> notify {=
+    lf_set(notify, "INIT");
+  =}
+
+  initial mode DRIVE {
+    reaction(startup) -> reset(TURN), notify, motors.left_power, motors.right_power {=
+      lf_set(notify, "DRIVING");
+      lf_set(motors.left_power, 0.1);
+      lf_set(motors.right_power, 0.1);
+      //lf_set(self->drive, true);
+    =}
+
+    reaction(left_distance, right_distance, angle_z) -> reset(TURN), notify, motors.left_power, motors.right_power {=
+      lf_set(notify, "DRIVING");
+      lf_set(motors.left_power, 0.1);
+      lf_set(motors.right_power, 0.1);
+      if ((left_distance->value >= 50.0f + self->init_left_distance) | (right_distance->value >= 50.0f + self->init_right_distance)) {
+        lf_set_mode(TURN);
+        self->initial_gyroz = angle_z->value;
+        //lf_set(self->drive, !self->drive);
+      }
+    =}
+  }
+
+  mode TURN {
+    reaction(startup) -> notify, motors.left_power, motors.right_power {=
+      lf_set(notify, "TURNING");
+      lf_set(motors.left_power, -0.1);
+      lf_set(motors.right_power, 0.1);
+    =}
+
+    reaction(angle_z, right_distance, left_distance) -> reset(DRIVE), notify, motors.left_power, motors.right_power {=
+      lf_set(notify, "TURNING");
+      lf_set(motors.left_power, -0.1);
+      lf_set(motors.right_power, 0.1);
+      if ((angle_z->value) >= self->initial_gyroz + 90.0f) {
+        self->init_left_distance = left_distance->value;
+        self->init_right_distance = right_distance->value;
+        lf_set(motors.left_power, 0);
+        lf_set(motors.right_power, 0);
+        lf_set_mode(DRIVE);
+        //lf_set(self->drive, !self->drive);
+      }
+  =}
+}
+}
+
+main reactor {
+  state drive: bool = false
+  robot = new Robot()
+  display = new Display()
+  encoder = new Encoders()
+  gyro = new GyroAngle() 
+  
+  robot.notify -> display.line0
+
+  timer t(0, 50 ms)
+
+  reaction(t) -> encoder.trigger, gyro.trigger {=
+    lf_set(encoder.trigger, true);
+    lf_set(gyro.trigger, true);
+  =}
+
+  reaction(encoder.left) -> robot.left_distance {=
+    lf_set(robot.left_distance, 9.9695f * (encoder.left->value/360.0f));
+  =}
+
+  reaction(encoder.right) -> robot.right_distance{=
+    lf_set(robot.right_distance, 9.9695f * (encoder.right->value/360.0f));
+  =}
+
+  reaction(gyro.z) -> robot.angle_z {=
+    lf_set(robot.angle_z, gyro.z->value);
+  =}
+
+}
