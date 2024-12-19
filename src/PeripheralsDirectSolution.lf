@@ -3,7 +3,6 @@
  * <a href="https://www.pololu.com/docs/0J86">Pololu 3pi+ 2040 robot</a>.
  * @author Abhi Gundrala
  * @author Edward A. Lee
- * @author Gurmehr Klair
  */
 target C {
   platform: {
@@ -20,29 +19,40 @@ preamble {=
 =}
 
 main reactor {
-  timer t(0, 250 ms)
+  timer t(0, 2000 ms)
   state led_on: bool = false
 
-
   reaction(startup) {=
+    // Initialize this GPIO
     gpio_init(PICO_DEFAULT_LED_PIN);
-    gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_BFGOUT);
+    // Set direction to output
+    gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
   =}
 
   reaction(t) {=
     self->led_on = !self->led_on;
     printf("LED State: %b\n", self->led_on);
-
-    uint32_t mask = 1ul << 25;
-    uint32_t *gpio_set = (uint32_t *)(0xd0000000 + 0x14);
-    uint32_t *gpio_clear = (uint32_t *)(0xd0000000 + 0x14);
+    // Toggle LED on and off
+    // gpio_put(PICO_DEFAULT_LED_PIN, !self->led_on);
+    // 0x4001400 << 0x0c8  
     
-    if (self->led_on) {
+    // uint8_t gpio25 = 1 << PICO_DEFAULT_LED_PIN;
+    uint32_t mask = 1 << 25;
+    uint32_t *gpio_set = (uint32_t *)(0xd0000000 + 0x14);
+    uint32_t *gpio_off = (uint32_t *)(0xd0000000 + 0x18);
+    // uint32_t *gpio_out = 0xd0000000 + 0x10;
+
+    if (self->led_on)
+    {
       *gpio_set = mask;
-    } else {
-      *gpio_clr = mask;
+      // *gpio_set |= gpio25;
+    }
+    else 
+    {
+      // sio_hw->gpio_set = mask;
+      *gpio_off |= mask;
     }
 
-    // gpio_put(PICO_DEFAULT_LED_PIN, !self->led_on);
   =}
+
 }
